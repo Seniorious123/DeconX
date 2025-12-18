@@ -19,11 +19,6 @@ from .diagnostics import (
     generate_final_discovery_summary,
     compare_learned_vs_reference_signatures
 )
-from .analysis import (
-    initialize_reliability_analysis, 
-    collect_round_data_for_analysis, 
-    generate_final_reliability_report
-)
 from ..generation.data_manager import simulate_data
 from .distillation_plots import (
     plot_residual_pca, 
@@ -90,11 +85,9 @@ def distillation(test_x, test_groundtruth_y=None, scseq=None, all_scseq=None, si
     if unified_signature_matrix is None:
         unified_signature_matrix = pd.read_csv("data/reference/unified_signature_matrix.csv", index_col=0)
     
-    initialize_reliability_analysis(target_celltypes, ['B_cell', 'CD14', 'CD4', 'CD8'], f"{'_'.join(target_celltypes)}_experiment")
-    
     # Phase I: Initial Model
     print("\n--- Phase I: Initial Model ---")
-    train_cells = initial_known_ctypes if initial_known_ctypes else ['B_cell', 'CD14', 'CD4', 'CD8']
+    train_cells = initial_known_ctypes
     ckpt_path = os.path.join(output_path, 'checkpoints_initial', f"initial_model_{len(train_cells)}_cells.pth")
     os.makedirs(os.path.dirname(ckpt_path), exist_ok=True)
     
@@ -170,7 +163,7 @@ def distillation(test_x, test_groundtruth_y=None, scseq=None, all_scseq=None, si
             seed=seed+round_num+9999, 
             ctypes=calibration_ctypes, 
             cpu=cpu, 
-            samples=750
+            samples=int(len(test_x) * 0.25)
         )
         
         with torch.no_grad():
@@ -227,7 +220,6 @@ def distillation(test_x, test_groundtruth_y=None, scseq=None, all_scseq=None, si
         if len(sim_scores) > 0:
             plot_pca_selection(adata_pca, np.where(sim_scores >= np.percentile(sim_scores, 90))[0], round_num, output_path, "pca_sim_selected", "Sim Selection", "Sim Selected")
         
-        collect_round_data_for_analysis(round_num, {}, sim_res['sorted_similarities'], np.mean(np.sum(residuals, 1)), best_match)
         discovered.append(best_match)
         anon_type = f"Unknown_R{round_num+1}"
         
@@ -297,21 +289,21 @@ def distillation(test_x, test_groundtruth_y=None, scseq=None, all_scseq=None, si
                 if ol.bias is not None and nl.bias is not None:
                     nl.bias.data = ol.bias.data.clone()
         
-        # Train
-        opt = Adam(exp_model.parameters(), lr=act_lr)
+        # Train - Two-phase progressive training
         exp_model.train()
         loader = DataLoader(SimpleDataset(sx, sy), batch_size, True)
         test_loader = DataLoader(SimpleDataset(test_x.values), batch_size, True)
         ref_w = exp_model.decoder[0].weight.data[:, :-1].clone()
-        
+        freeze_old = True
+
         for ep in tqdm(range(endtoend_epochs), desc=f"Training R{round_num+1}"):
-            if ep == 0: 
+            if ep == 0:
                 opt = Adam([p for p in exp_model.parameters() if p.requires_grad], lr=act_lr)
-            elif ep == endtoend_epochs//4:
-                for p in exp_model.parameters(): p.requires_grad = True
-                opt = Adam(exp_model.parameters(), lr=act_lr*0.3)
-            elif ep == endtoend_epochs//4 + endtoend_epochs//2:
-                opt = Adam(exp_model.parameters(), lr=act_lr)
+            elif ep == endtoend_epochs // 3:
+                for p in exp_model.parameters(): 
+                    p.requires_grad = True
+                opt = Adam(exp_model.parameters(), lr=act_lr * 0.5)
+                freeze_old = False
             
             for batch_idx, (bx, by) in enumerate(loader):
                 opt.zero_grad()
@@ -324,17 +316,21 @@ def distillation(test_x, test_groundtruth_y=None, scseq=None, all_scseq=None, si
                     test_data_iter = iter(test_loader)
                     try:
                         test_batch = next(test_data_iter)
-                        if isinstance(test_batch, tuple): test_batch = test_batch[0]
+                        if isinstance(test_batch, tuple): 
+                            test_batch = test_batch[0]
                         test_rec, _, _ = exp_model(test_batch.to(device))
                         loss += 0.5 * F.mse_loss(test_rec, test_batch.to(device))
                     except StopIteration:
                         pass
                 
                 loss.backward()
-                if ep < endtoend_epochs//4:
-                    if exp_model.encoder[-3].weight.grad is not None: exp_model.encoder[-3].weight.grad[:prev_dim] = 0
-                    if exp_model.encoder[-3].bias is not None and exp_model.encoder[-3].bias.grad is not None: exp_model.encoder[-3].bias.grad[:prev_dim] = 0
-                    if exp_model.decoder[0].weight.grad is not None: exp_model.decoder[0].weight.grad[:, :prev_dim] = 0
+                if freeze_old:
+                    if exp_model.encoder[-3].weight.grad is not None: 
+                        exp_model.encoder[-3].weight.grad[:prev_dim] = 0
+                    if exp_model.encoder[-3].bias is not None and exp_model.encoder[-3].bias.grad is not None: 
+                        exp_model.encoder[-3].bias.grad[:prev_dim] = 0
+                    if exp_model.decoder[0].weight.grad is not None: 
+                        exp_model.decoder[0].weight.grad[:, :prev_dim] = 0
                 opt.step()
         
         current_model = exp_model
@@ -404,6 +400,5 @@ def distillation(test_x, test_groundtruth_y=None, scseq=None, all_scseq=None, si
 
     generate_final_discovery_summary(discovered, train_cells + discovered, output_path)
     torch.save(final_model, os.path.join(output_path, 'final_complete_model.pth'))
-    generate_final_reliability_report(discovered, unified_signature_matrix, output_path)
 
     return final_model
