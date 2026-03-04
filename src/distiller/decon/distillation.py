@@ -27,6 +27,13 @@ from .distillation_plots import (
     plot_projection_validation
 )
 
+def export_round_plot_data(round_num, output_path, **data_dict):
+    plot_data_dir = os.path.join(output_path, 'plot_data')
+    os.makedirs(plot_data_dir, exist_ok=True)
+    save_path = os.path.join(plot_data_dir, f'round_{round_num}.npz')
+    np.savez_compressed(save_path, **data_dict)
+    print(f"[PLOT DATA] Exported round {round_num} data")
+
 def diagnose_virtual_data_scale(mixed_scseq, final_sim_cells, anonymous_celltype, output_path):
     """Analyzes scale issues and outputs CSVs required for characteristic gene extraction."""
     print("\n" + "="*80 + "\nVIRTUAL DATA SCALE DIAGNOSTIC MODULE\n" + "="*80)
@@ -81,6 +88,7 @@ def distillation(test_x, test_groundtruth_y=None, scseq=None, all_scseq=None, si
     output_path = kwargs.get('output_path', '.')
     val_dir = os.path.join(output_path, 'validation_inputs')
     os.makedirs(val_dir, exist_ok=True)
+    all_previous_characteristic_genes = set()
     
     if unified_signature_matrix is None:
         unified_signature_matrix = pd.read_csv("data/reference/unified_signature_matrix.csv", index_col=0)
@@ -207,39 +215,123 @@ def distillation(test_x, test_groundtruth_y=None, scseq=None, all_scseq=None, si
             xsub_recon, _, _ = current_model(torch.from_numpy(test_x.values[indices]).float().to(device))
         purified = np.maximum(test_x.values[indices] - xsub_recon.cpu().numpy(), 0)
         last_purified_residuals = purified
+
+        export_round_plot_data(
+            round_num, output_path,
+            adata_pca_obsm=adata_pca.obsm['X_pca'],
+            adata_pca_varm=adata_pca.varm['PCs'],
+            res_pca=res_pca,
+            residuals=residuals,
+            top_genes=np.array(top_genes),
+            indices=indices,
+            test_x_values=test_x.values,
+            test_x_index=test_x.index.values,
+            test_groundtruth_y=(test_groundtruth_y.values if test_groundtruth_y is not None else None),
+            test_groundtruth_columns=(test_groundtruth_y.columns.tolist() if test_groundtruth_y is not None else None),
+            target_celltypes=target_celltypes,
+            current_scseq_celltypes=current_scseq['celltype'].unique().tolist(),
+            model_genes=model_genes.tolist(),
+            seed=seed,
+            cpu=cpu
+        )
         
         # Plots
         plot_pca_selection(adata_pca, indices, round_num, output_path, "pca_with_selected", "Selection", "Selected")
         plot_projection_validation(adata_pca, indices, res_pca, current_scseq, current_model, top_genes, test_x, seed, cpu, round_num, output_path)
         
-        # Similarity
+        # # Similarity
+        # sim_res = generate_similarity_ranking_report(np.mean(purified, 0), filtered_sigs, output_path, round_num)
+        # best_match = sim_res['sorted_similarities'][0][0]
+        
+        # sim_scores = np.array([find_best_match(r, filtered_sigs)[1] for r in residuals]) 
+
+        # Similarity - using all genes
         sim_res = generate_similarity_ranking_report(np.mean(purified, 0), filtered_sigs, output_path, round_num)
         best_match = sim_res['sorted_similarities'][0][0]
-        
-        sim_scores = np.array([find_best_match(r, filtered_sigs)[1] for r in residuals]) 
+
+        # Extract similarity scores for all candidate celltypes (for ranking output later)
+        sims = []
+        for idx, celltype_name in enumerate(filtered_sigs.index):
+            sig_vec = filtered_sigs.iloc[idx].values
+            purif_mean = np.mean(purified, 0)
+            
+            sig_norm = np.linalg.norm(sig_vec)
+            purif_norm = np.linalg.norm(purif_mean)
+            
+            if sig_norm > 0 and purif_norm > 0:
+                cos_sim = np.dot(purif_mean, sig_vec) / (sig_norm * purif_norm)
+            else:
+                cos_sim = 0.0
+            
+            sims.append(cos_sim)
+
+        sims = np.array(sims)
+
+        sim_scores = np.array([find_best_match(r, filtered_sigs)[1] for r in residuals])
+
         if len(sim_scores) > 0:
             plot_pca_selection(adata_pca, np.where(sim_scores >= np.percentile(sim_scores, 90))[0], round_num, output_path, "pca_sim_selected", "Sim Selection", "Sim Selected")
         
         discovered.append(best_match)
         anon_type = f"Unknown_R{round_num+1}"
+
+        # Print similarity ranking
+        print(f"\n[SIMILARITY RANKING] Round {round_num} - {anon_type} vs Candidate Cell Types:")
+        sorted_indices = np.argsort(sims)[::-1]  # Sort in descending order
+        for rank, idx in enumerate(sorted_indices[:10], 1):  # Print top 10
+            celltype_name = filtered_sigs.index[idx]
+            similarity_value = sims[idx]
+            marker = " <- SELECTED" if celltype_name == best_match else ""
+            print(f"  {rank}. {celltype_name}: {similarity_value:.4f}{marker}")
         
         # Virtual Data & Characteristic Genes
         mixed_scseq = create_mixed_scseq_data(current_scseq, purified, train_cells + discovered[:-1], anon_type)
         current_scseq = deepcopy(mixed_scseq)
         
         diagnose_virtual_data_scale(mixed_scseq, train_cells + discovered[:-1] + [anon_type], anon_type, val_dir)
+        # try:
+        #     os.rename(os.path.join(val_dir, 'gene_level_scale_analysis.csv'), os.path.join(val_dir, f'round_{round_num}_gene_level_scale_analysis.csv'))
+        #     ga = pd.read_csv(os.path.join(val_dir, f'round_{round_num}_gene_level_scale_analysis.csv'))
+        #     high = ga[(ga['ratio'] > 10) & (ga['virtual_mean'] > 1.0)].sort_values('ratio', ascending=False)
+        #     if not high.empty:
+        #         cgenes = high.head(5)['gene'].tolist()
+        #         with open(os.path.join(val_dir, f'round_{round_num}_characteristic_genes.txt'), 'w') as f:
+        #             f.write('\n'.join(cgenes))
+        # except Exception as e: print(f"Gene extraction error: {e}")
+
         try:
             os.rename(os.path.join(val_dir, 'gene_level_scale_analysis.csv'), os.path.join(val_dir, f'round_{round_num}_gene_level_scale_analysis.csv'))
             ga = pd.read_csv(os.path.join(val_dir, f'round_{round_num}_gene_level_scale_analysis.csv'))
             high = ga[(ga['ratio'] > 10) & (ga['virtual_mean'] > 1.0)].sort_values('ratio', ascending=False)
             if not high.empty:
-                cgenes = high.head(5)['gene'].tolist()
-                with open(os.path.join(val_dir, f'round_{round_num}_characteristic_genes.txt'), 'w') as f:
+                # Select the top 50 most prominent genes (or fewer if less than 50 are available)
+                cgenes = high.head(50)['gene'].tolist()
+                
+                # Calculate the percentage of genes that are "new" (not seen in previous rounds)
+                cgenes_set = set(cgenes)
+                new_genes = cgenes_set - all_previous_characteristic_genes
+                num_new_genes = len(new_genes)
+                total_genes = len(cgenes)
+                new_gene_percentage = (num_new_genes / total_genes * 100) if total_genes > 0 else 0
+                
+                # Print output in the specified format
+                print(f"Round {round_num + 1}: {new_gene_percentage:.1f}% genes are new ({num_new_genes}/{total_genes} genes)")
+                
+                # Add this round's characteristic genes to the global tracking set for future comparison
+                all_previous_characteristic_genes.update(cgenes_set)
+                
+                # Save characteristic genes to file with updated filename
+                with open(os.path.join(val_dir, f'round_{round_num}_characteristic_genes_top50.txt'), 'w') as f:
                     f.write('\n'.join(cgenes))
         except Exception as e: print(f"Gene extraction error: {e}")
         
         # Expansion & Training
         train_types = train_cells + [f"Unknown_R{i+1}" for i in range(len(discovered))]
+
+        current_scseq = current_scseq.copy() 
+        import gc
+        gc.collect()
+
         # SAFE CALL 5: Explicit keywords for simulate_data
         sx, sy = simulate_data(
             sc_data=mixed_scseq,
@@ -337,6 +429,51 @@ def distillation(test_x, test_groundtruth_y=None, scseq=None, all_scseq=None, si
         torch.save(current_model, os.path.join(output_path, f'round_{round_num}_model.pth'))
         baseline_sigs = np.vstack([baseline_sigs, current_model.sigmatrix().detach().cpu().numpy()[-1:]])
 
+
+        # =================================================================================
+        # [MODIFIED] Internal Model Signature Similarity (新发现 vs 模型内所有已知)
+        # =================================================================================
+        print(f"\n[ANALYSIS] Calculating INTERNAL signature similarity (Model-Learned) for Round {round_num}...")
+        
+        # 1. 获取模型当前所有的 Signature 矩阵 (Rows = Cell Types, Cols = Genes)
+        all_current_sigs = current_model.sigmatrix().detach().cpu().numpy()
+        
+        # 2. 定义主角：这一轮刚刚训练出来的那个 Signature (矩阵最后一行)
+        target_label = f"Unknown_R{round_num+1}"
+        new_sig_vector = all_current_sigs[-1]
+        new_sig_norm = np.linalg.norm(new_sig_vector)
+
+        # 3. 定义对比对象：模型里现有的所有 Signature (包括它自己，包括初始已知的，包括之前发现的)
+        current_model_labels = train_cells + [f"Unknown_R{i+1}" for i in range(len(discovered))]
+        
+        sim_results = []
+        
+        for idx, label in enumerate(current_model_labels):
+            ref_vec = all_current_sigs[idx]
+            ref_norm = np.linalg.norm(ref_vec)
+            
+            # Cosine Similarity Calculation
+            if new_sig_norm == 0 or ref_norm == 0:
+                cos_sim = 0.0
+            else:
+                cos_sim = np.dot(new_sig_vector, ref_vec) / (new_sig_norm * ref_norm)
+            
+            sim_results.append({
+                'Round': round_num,
+                'Target_New_Signature': target_label, 
+                'Compared_To_Signature': label,       # 这是模型内部的已知类型或旧发现
+                'Internal_Cosine_Similarity': cos_sim
+            })
+
+        # 4. 保存结果
+        sim_df = pd.DataFrame(sim_results)
+        save_name = f'round_{round_num}_internal_model_similarity.csv'
+        sim_df.to_csv(os.path.join(output_path, save_name), index=False)
+        print(f"[ANALYSIS] Saved Internal Similarity report to: {save_name}")
+        # =================================================================================
+
+        
+
         if test_groundtruth_y is not None:
             print(f"\n--- Running End-of-Round Evaluation (Ground Truth available) ---")
             try:
@@ -350,10 +487,16 @@ def distillation(test_x, test_groundtruth_y=None, scseq=None, all_scseq=None, si
                     cell_types=deepcopy(train_cells + discovered),
                     batch_size=batch_size
                 )
+            # except (KeyError, ValueError) as e:
+            #     print(f"\n[INFO] Evaluation stopped at new cell type (Expected): {e}")
+            #     print("Exiting discovery loop to finalize results.")
+            #     break
+
+
             except (KeyError, ValueError) as e:
-                print(f"\n[INFO] Evaluation stopped at new cell type (Expected): {e}")
-                print("Exiting discovery loop to finalize results.")
-                break
+                print(f"\n[WARN] Evaluation failed (New type not in GT). Ignoring and CONTINUING loop.")
+                # break
+
         else:
             # Real Data (No Ground Truth) -> SKIP evaluation -> CONTINUE loop
             print(f"\n--- Skipping End-of-Round Evaluation (Real Data / No GT) ---")
