@@ -124,7 +124,10 @@ def save_processed(adata, bulk_df, out_dir, prefix, celltype_col):
         adata.X.toarray() if hasattr(adata.X, "toarray") else adata.X,
         index=adata.obs_names, columns=adata.var_names,
     )
-    sc_df[celltype_col] = adata.obs[celltype_col].values
+    # Downstream CSV loader (read_sc_input in data_manager.py) always looks
+    # for the singular column name "celltype"; rename here so any user-side
+    # column ("celltypes", "cell_type", ...) lands as the expected name.
+    sc_df["celltype"] = adata.obs[celltype_col].values
     sc_path = os.path.join(out_dir, f"{prefix}_sc_processed.csv")
     bulk_path = os.path.join(out_dir, f"{prefix}_bulk_processed.csv")
     sc_df.to_csv(sc_path)

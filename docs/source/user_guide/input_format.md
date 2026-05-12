@@ -40,10 +40,11 @@ mean-expression signatures.
 
 - Rows = cells (barcodes as the index column).
 - Columns = genes (HGNC symbols, upper case).
-- A single extra column `celltype` is required and must list one cell-type
-  label per cell (string). The exact column name (`celltype`, all lower
-  case, no whitespace) is what the loader looks for; you can override it
-  with `--celltype_col` in `preprocess_user_data.py`.
+- A single extra column `celltype` (**singular, lower case**) is required
+  and must list one cell-type label per cell (string). The CSV loader
+  looks for this exact name; `preprocess_user_data.py` accepts
+  `--celltype_col` if your source file uses a different name and will
+  rename it to `celltype` in the output.
 - Counts can be raw, CPM, or log-normalised; DeconX log-transforms
   internally for HVG selection but feeds raw values into the autoencoder.
 
@@ -52,7 +53,10 @@ mean-expression signatures.
 - `adata.X` of shape (n_cells × n_genes), raw or normalised counts.
   Sparse (`csr_matrix`) or dense layouts are both accepted.
 - `adata.var_names` = gene symbols (HGNC, upper case).
-- `adata.obs["celltype"]` = cell-type labels (string column).
+- `adata.obs["celltypes"]` (**plural**, historical naming in this code path)
+  = cell-type labels (string column). The loader renames the column to
+  `celltype` (singular) once the matrix has been densified, so all
+  downstream code and the CSV format below use the singular form.
 
 ## 2. Bulk RNA-seq (`--test_bulk`)
 
@@ -157,9 +161,13 @@ Before launching `run_distillation.py`, verify:
 
 ## Troubleshooting
 
-**"Single-cell file is missing obs column 'celltype'"**
-: Add the column, or pass `--celltype_col <your_column_name>` to
-  `preprocess_user_data.py`.
+**"Single-cell file is missing obs column 'celltype'" (CSV) /
+"'celltypes'" (h5ad)**
+: The CSV loader expects the singular `celltype` column; the h5ad loader
+  expects `adata.obs["celltypes"]` (plural). If your column name differs,
+  either rename it or run the file through `preprocess_user_data.py`
+  with `--celltype_col <your_column_name>` and use the produced CSV
+  directly.
 
 **`KeyError` on a gene during signature building**
 : Gene symbol convention mismatch. Convert Ensembl IDs (`ENSG…`) to HGNC
