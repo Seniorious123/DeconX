@@ -1,0 +1,36 @@
+# Adipocyte marker panel used by 01_preprocess_hgsoc.py.
+#
+# Adipocytes are technically missing from the HGSOC scRNA-seq reference
+# (Hippen et al., Genome Biology 2023): the population is fragile under
+# dissociation and is essentially absent from single-cell data while abundant
+# in single-nucleus data of the same samples. These markers are retained in
+# the gene panel even when they are not highly variable, so the missing-
+# cell-type signal stays representable.
+#
+# Sources: classic adipocyte markers and lipid-metabolism / lipolysis genes.
+# Override with --marker_genes_file pointing to your own one-gene-per-line file.
+
+# Classic adipocyte markers
+ADIPOQ
+LEP
+CEBPA
+FABP4
+
+# Core adipocyte function
+PPARG
+PLIN1
+PLIN2
+LPL
+
+# Lipid metabolism and storage
+CIDEC
+CD36
+RETN
+FASN
+
+# Metabolic enzymes and lipolysis
+ACACA
+SCD
+PCK1
+LIPE
+GPD1

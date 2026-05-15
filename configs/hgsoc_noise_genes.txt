@@ -1,0 +1,13 @@
+# Noise gene panel removed by 01_preprocess_hgsoc.py before training.
+#
+# These are mitochondrial transcripts and nuclear-enriched non-coding RNAs
+# whose high expression in single-cell data reflects dissociation stress or
+# nuclear retention rather than cell-type-defining biology. Removing them
+# stabilises HVG selection on the HGSOC dataset.
+#
+# Override with --noise_genes_file pointing to your own one-gene-per-line file.
+
+MALAT1
+MT-CO1
+MT-CO3
+NEAT1

@@ -19,7 +19,7 @@ guidance on when to change them.
 | Parameter        | Default | Effect |
 |------------------|:-------:|--------|
 | `TOP_PCA_FRAC`   | 0.10    | Fraction of high-PCA-loading genes used to build the residual signature. Increasing to 0.20–0.30 can help when the residual is weak; decreasing to 0.05 sharpens specificity but risks missing genuine signals. |
-| Number of model genes | 6 030 | Set by `01_preprocess_hgsoc.py` (HVG selection, defaults to 6000 + manual blacklist of MALAT1, MT-CO1, NEAT1). |
+| Number of model genes | 6 030 | Set by `01_preprocess_hgsoc.py` (HVG selection, default `--n_top_genes 6000`, marker panel from `configs/hgsoc_markers.txt`, noise panel from `configs/hgsoc_noise_genes.txt`). Edit the config files to change the gene panels without touching the script. |
 
 We have validated DeconX with `TOP_PCA_FRAC` ∈ {0.05, 0.10, 0.15, 0.20, 0.30}
 on the simulated PBMC benchmark (n = 3 000); all values recovered the held-out

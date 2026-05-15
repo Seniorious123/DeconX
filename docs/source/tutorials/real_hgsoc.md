@@ -9,17 +9,21 @@ because the reference uses single-nucleus data).
 
 ```bash
 python scripts/01_preprocess_hgsoc.py \
-    --sc_input data/raw/hgsoc_sc.h5ad \
-    --bulk_input data/raw/hgsoc_bulk.tsv \
-    --output_dir data/processed/
+    --raw_dir data/raw/ \
+    --processed_dir data/processed/
 ```
+
+`data/raw/` is the directory layout used by GEO GSE217517: `GSM*_single_cell_matrix_*.mtx` triplets with paired barcodes / features TSVs, `GSM*_bulk_chunk_ribo_*.tsv` bulk files, and `cell_labels/*_labels.txt` cell-type annotations. To preprocess **your own** (non-HGSOC) data, use `scripts/preprocess_user_data.py` instead.
 
 This step:
 
-- subsets to highly-variable genes (default 6 000),
-- removes a noise blacklist (`MALAT1`, `MT-CO1`, `NEAT1`),
+- subsets to highly-variable genes (default `--n_top_genes 6000`),
+- retains the marker panel from `configs/hgsoc_markers.txt` (17 adipocyte markers) even if not highly variable,
+- removes the noise panel from `configs/hgsoc_noise_genes.txt` (`MALAT1`, `MT-CO1`, `MT-CO3`, `NEAT1`),
 - aligns gene panels between bulk and single-cell,
 - writes `hgsoc_sc_processed.csv` and `hgsoc_bulk_processed.csv`.
+
+Both gene panels are plain text (one gene per line, `#` comments allowed); edit them in place to customise without changing the script. Override with `--marker_genes_file` / `--noise_genes_file` if you need a different panel for a sensitivity test.
 
 ## 2. Build the reference
 

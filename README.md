@@ -7,7 +7,8 @@ DeconX is a specialized computational toolbox designed to identify and extract f
 The project is structured to ensure clear separation between data management, core algorithms, and execution scripts:
 
 * **scripts/**: Main execution entry points.
-    * 01_preprocess_hgsoc.py: Handles raw data cleaning, HVG selection (default 6000), and specific noise gene removal (e.g., MALAT1, MT-CO1, NEAT1).
+    * 01_preprocess_hgsoc.py: HGSOC-specific preprocessing (GEO GSE217517 layout) used to reproduce the manuscript results. HVG selection (default 6000), marker-gene retention, and noise-gene removal are all driven by plain-text panels under `configs/` (`hgsoc_markers.txt`, `hgsoc_noise_genes.txt`); see the script docstring or `--help` for CLI overrides.
+    * preprocess_user_data.py: Dataset-agnostic preprocessing for **any** bulk + scRNA-seq pair. Use this if you are not reproducing the HGSOC analysis.
     * 02_build_signature_library.py: Constructs signature matrices by combining internal HGSOC data with external datasets (e.g., GSE176171).
     * run_distillation.py: The primary workflow runner that manages scale alignment, global 99.95% capping, and the discovery process.
     * run_simulation.py: Generates pseudo-bulk data via parallel Dirichlet sampling for algorithm benchmarking.

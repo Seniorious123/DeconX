@@ -140,7 +140,11 @@ alone.
 
 The HGSOC paper pipeline lives in `scripts/01_preprocess_hgsoc.py` and is
 tied to the GSE217517 raw layout — it is a worked example for paper
-reproduction, **not** the entry point for your own data.
+reproduction, **not** the entry point for your own data. Its marker and
+noise gene panels live in `configs/hgsoc_markers.txt` and
+`configs/hgsoc_noise_genes.txt`; both are plain text (one gene per line,
+`#` comments allowed) and can be overridden with `--marker_genes_file` /
+`--noise_genes_file` without editing the script.
 
 ## End-to-end checklist
 
