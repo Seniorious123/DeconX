@@ -37,6 +37,7 @@ MAX_CANDIDATES = 5
 NUM_DEG = 10  # Number of discriminatory genes to select per type
 
 print("=" * 80)
+
 print("BUILDING HIGHLY SPECIFIC SIGNATURE LIBRARY")
 print("=" * 80)
 
@@ -418,6 +419,3 @@ if not candidate_sig_df.empty:
 print("\n" + "=" * 80)
 print("✓ SUCCESS! Signature library built")
 print("=" * 80)
-
-
-# sbatch --job-name=build_signatures --output="%x_%j.out" --error="%x_%j.err" --time=1:30:00 --ntasks=1 --cpus-per-task=4 --mem=48G --account=ctb-liyue --wrap="source /home/yiminfan/projects/ctb-liyue/yiminfan/project_yue/tape/bin/activate && cd /home/yiminfan/projects/ctb-liyue/yiminfan/project_yixuan/Distillation_Plasma_preprocess && python scripts/03_build_signature_library.py"

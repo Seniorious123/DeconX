@@ -26,15 +26,15 @@ import sys
 
 # Step 1: Get the absolute path of this script file
 # __file__ gives us the path to this script, which is:
-# /home/yiminfan/.../Distillation_Plasma/scripts/validate_discovery.py
+# scripts/validate_discovery.py
 script_path = os.path.abspath(__file__)
 
 # Step 2: Get the directory containing this script (the scripts/ directory)
-# This gives us: /home/yiminfan/.../Distillation_Plasma/scripts
+# This gives us: scripts
 script_dir = os.path.dirname(script_path)
 
 # Step 3: Go up one level to get the project root directory
-# This gives us: /home/yiminfan/.../Distillation_Plasma
+# This gives us the project root directory.
 project_root = os.path.dirname(script_dir)
 
 # Step 4: Add the project root to the beginning of Python's module search path
@@ -1652,6 +1652,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-
-# sbatch --job-name=validate_discovery --output="%x_%j.out" --error="%x_%j.err" --time=0:30:00 --ntasks=1 --cpus-per-task=2 --mem=16G --account=ctb-liyue --wrap="source /home/yiminfan/projects/ctb-liyue/yiminfan/project_yue/tape/bin/activate && cd /home/yiminfan/projects/ctb-liyue/yiminfan/project_yixuan/Distillation_Cut && python scripts/validate_discovery.py --output_dir outputs/hgsoc_Adipocytes_Plasma_results"
